@@ -22,6 +22,10 @@ pub(crate) struct FakeArgs {
     #[clap(long, verbatim_doc_comment)]
     pub(crate) dry_run: bool,
 
+    /// Print the dependency graph as JSON instead of running anything.
+    #[clap(long, verbatim_doc_comment)]
+    pub(crate) print_graph: bool,
+
     /// Print completions for the given shell (instead of generating any icons).
     /// These can be loaded/stored permanently (e.g. when using Homebrew), but they can also be sourced directly, e.g.:
     ///
