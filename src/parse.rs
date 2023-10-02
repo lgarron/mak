@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_till, take_while, take_while1},
@@ -13,7 +12,7 @@ use serde::Serialize;
 pub(crate) struct TargetName(String);
 
 #[derive(Debug, Default, Serialize)]
-pub(crate) struct TargetGraph(HashMap<TargetName, Vec<TargetName>>);
+pub(crate) struct TargetGraph(IndexMap<TargetName, Vec<TargetName>>);
 
 fn is_allowed_target_name_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-'
