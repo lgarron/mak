@@ -16,7 +16,7 @@ pub(crate) struct FakeArgs {
 
     /// Makefile target
     #[clap(verbatim_doc_comment)]
-    pub(crate) target: Option<PathBuf>,
+    pub(crate) target: Option<String>,
 
     /// Show how commands would have been run, without actually running.
     #[clap(long, verbatim_doc_comment)]

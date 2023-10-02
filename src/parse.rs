@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use indexmap::IndexMap;
 use nom::{
     branch::alt,
@@ -8,11 +10,17 @@ use nom::{
 };
 
 use serde::Serialize;
-#[derive(Debug, PartialEq, Eq, Hash, Serialize)]
-pub(crate) struct TargetName(String);
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+pub(crate) struct TargetName(pub(crate) String);
+
+impl Display for TargetName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Debug, Default, Serialize)]
-pub(crate) struct TargetGraph(IndexMap<TargetName, Vec<TargetName>>);
+pub(crate) struct TargetGraph(pub(crate) IndexMap<TargetName, Vec<TargetName>>);
 
 fn is_allowed_target_name_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-'
