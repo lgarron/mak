@@ -80,19 +80,33 @@ fn make_target(
         .get(target_name)
         .expect("Internal error: Unexpectedly missing a target")
         .clone();
-    let dependency_receivers: Vec<Receiver<()>> = dependencies
+    let dependency_receivers: Vec<(TargetName, Receiver<()>)> = dependencies
         .iter()
-        .map(|target_name| make_target(signals, target_graph, makefile_path, target_name))
+        .map(|target_name| {
+            (
+                target_name.clone(),
+                make_target(signals, target_graph, makefile_path, target_name),
+            )
+        })
         .collect();
     let makefile_path_owned = makefile_path.to_owned();
     let target_name_owned = target_name.clone();
 
     spawn(move || {
         let target_name_owned = target_name_owned;
-        for dependency_receiver in dependency_receivers {
-            dependency_receiver
-                .recv()
-                .expect("A dependency did not build successfully.");
+        for (dependency_target_name, dependency_receiver) in dependency_receivers {
+            match dependency_receiver.recv() {
+                Ok(_) => (),
+                Err(err) => {
+                    eprintln!("----------------");
+                    eprintln!("A dependency did not build successfully.");
+                    eprintln!("Target: {}", target_name_owned);
+                    eprintln!("Dependency: {}", dependency_target_name);
+                    eprintln!("Error: {}", err);
+                    eprintln!("----------------");
+                    exit(1);
+                }
+            }
         }
         make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
         tx.send(())
@@ -114,9 +128,11 @@ fn make_individual_dependency(
         args.push(&dependency.0);
     }
 
-    let output = Command::new("make")
+    println!("[{}] Starting…", target_name);
+    let _ = Command::new("make")
         .args(args)
         .output()
         .expect("failed to execute process");
-    dbg!(output);
+    println!("[{}] Finished.", target_name);
+    // dbg!(output);
 }
