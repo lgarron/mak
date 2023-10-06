@@ -1,39 +1,70 @@
 use async_std::task::{self, block_on, JoinHandle};
 use futures::{future::join_all, FutureExt};
+use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
 mod options;
 use std::{
     collections::HashMap,
-    fs::read_to_string,
-    path::{Path, PathBuf},
-    process::{exit, Command},
+    path::Path,
+    process::{exit, Command, Stdio},
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use options::get_options;
+use options::{get_options, MakArgs};
 use parse::TargetName;
 
 use crate::parse::TargetGraph;
 
 mod parse;
 
+const ERROR_COULD_NOT_LIST_TARGETS: &str =
+    "Could not list targets using `make` (are you missing a Makefile?)";
+
+fn makefile_not_found(options: &MakArgs) {
+    if options.print_completion_targets {
+        exit(0);
+    }
+    eprintln!("No Makefile specified and no file found called `Makefile`");
+    eprintln!("For more details, run: mak -h");
+    exit(0);
+}
+
 fn main() {
     let start_time = Instant::now();
     let options = get_options();
 
-    let makefile_path = options.makefile_path.unwrap_or("Makefile".into());
-    let makefile_contents = read_to_string(&makefile_path).unwrap_or_else(|_| {
-        if options.print_targets {
-            exit(0);
-        }
-
-        println!("No Makefile specified and no file found called `Makefile`");
-        println!("For more details, run: mak -h");
-        exit(0);
+    let mut args = vec!["-pRrq".to_owned()];
+    let makefile_path_str = options.makefile_path.as_ref().map(|p| {
+        p.to_str()
+            .expect("Could not convert Makefile path to a string.")
+            .to_owned()
     });
-    let target_graph: TargetGraph =
-        TargetGraph::try_from(&makefile_contents).expect("Could not parse Makefile");
+    if let Some(some_makefile_path_str) = &makefile_path_str {
+        let path = Path::new(&some_makefile_path_str);
+        if !path.exists() {
+            makefile_not_found(&options);
+        }
+        args.append(&mut make_args(&makefile_path_str));
+    } else if !Path::new("makefile").exists() && !Path::new("Makefile").exists() {
+        makefile_not_found(&options);
+    }
+
+    let child = Command::new("make")
+        .args(args)
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect(ERROR_COULD_NOT_LIST_TARGETS);
+    let output = child
+        .wait_with_output()
+        .expect(ERROR_COULD_NOT_LIST_TARGETS);
+
+    let stdout_str = String::from_utf8(output.stdout).expect(ERROR_COULD_NOT_LIST_TARGETS);
+    let mut target_graph: TargetGraph =
+        TargetGraph::try_from(&stdout_str).expect("Could not parse targets");
+    target_graph.edges = IndexMap::from_iter(target_graph.edges.into_iter().filter(|edge| {
+        !edge.0 .0.starts_with('.') && makefile_path_str != Some(edge.0 .0.clone())
+    }));
 
     if options.print_graph {
         println!(
@@ -42,9 +73,9 @@ fn main() {
         );
         exit(0)
     }
-    if options.print_targets {
+    if options.print_completion_targets {
         let lines: Vec<String> = target_graph
-            .0
+            .edges
             .keys()
             .map(|target_name| target_name.to_string())
             .collect();
@@ -53,7 +84,7 @@ fn main() {
     }
 
     let target_names: Vec<TargetName> = if options.targets.is_empty() {
-        let default_target_name = match target_graph.0.keys().next() {
+        let default_target_name = match &target_graph.default_goal {
             Some(target_name) => target_name.clone(),
             None => {
                 eprintln!("No target specified and no default target available");
@@ -67,7 +98,7 @@ fn main() {
             .iter()
             .map(|target_string| {
                 let target_name = TargetName(target_string.to_owned());
-                if !target_graph.0.contains_key(&target_name) {
+                if !target_graph.edges.contains_key(&target_name) {
                     eprintln!("Unknown target specified: {}", target_name);
                     exit(1)
                 };
@@ -82,7 +113,7 @@ fn main() {
         multi_progress: multi_progress.clone(),
         futures: HashMap::default(),
         target_graph,
-        makefile_path,
+        makefile_path_str,
     };
 
     block_on(shared_make.make_targets(&target_names));
@@ -115,7 +146,7 @@ struct SharedMake {
     multi_progress: Arc<MultiProgress>,
     futures: HashMap<TargetName, SharedFuture>,
     target_graph: TargetGraph,
-    makefile_path: PathBuf,
+    makefile_path_str: Option<String>,
 }
 
 impl SharedMake {
@@ -136,7 +167,7 @@ impl SharedMake {
 
         let dependencies = self
             .target_graph
-            .0
+            .edges
             .get(target_name)
             .expect("Internal error: Unexpectedly missing a target")
             .clone();
@@ -144,7 +175,7 @@ impl SharedMake {
             .iter()
             .map(|target_name| (self.make_target(target_name, depth + 1)))
             .collect();
-        let makefile_path_owned = self.makefile_path.to_owned();
+        let makefile_path_str_owned = self.makefile_path_str.to_owned();
         let target_name_owned = target_name.clone();
         let multi_progress_owned = self.multi_progress.clone();
 
@@ -172,7 +203,7 @@ impl SharedMake {
             );
             progress_bar.enable_steady_tick(Duration::from_millis(16));
 
-            make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
+            make_individual_dependency(dependencies, &makefile_path_str_owned, &target_name_owned);
 
             progress_bar.set_position(2);
             progress_bar.set_style(
@@ -189,22 +220,28 @@ impl SharedMake {
 
 fn make_individual_dependency(
     dependencies: Vec<TargetName>,
-    makefile_path: &Path,
+    makefile_path_str: &Option<String>,
     target_name: &TargetName,
 ) {
-    let makefile_path_str = &makefile_path.to_string_lossy();
-    let mut args = vec!["-f", makefile_path_str, &target_name.0];
+    let mut args = make_args(makefile_path_str);
+    args.push(target_name.0.clone());
 
     for dependency in &dependencies {
-        args.push("-o");
-        args.push(&dependency.0);
+        args.push("-o".to_owned());
+        args.push(dependency.0.clone());
     }
 
-    // println!("[{}] Starting…", target_name);
     let _ = Command::new("make")
         .args(args)
         .output()
         .expect("failed to execute process");
-    // println!("[{}] Finished.", target_name);
-    // dbg!(output);
+}
+
+fn make_args(makefile_path_str: &Option<String>) -> Vec<String> {
+    let mut args = vec![];
+    if let Some(makefile_path_str) = makefile_path_str {
+        args.push("-f".to_owned());
+        args.push(makefile_path_str.to_owned());
+    };
+    args
 }

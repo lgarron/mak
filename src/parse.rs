@@ -20,10 +20,17 @@ impl Display for TargetName {
 }
 
 #[derive(Debug, Default, Serialize)]
-pub(crate) struct TargetGraph(pub(crate) IndexMap<TargetName, Vec<TargetName>>);
+pub(crate) struct TargetGraph {
+    pub(crate) edges: IndexMap<TargetName, Vec<TargetName>>,
+    pub(crate) default_goal: Option<TargetName>,
+}
 
-fn is_allowed_target_name_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-'
+fn is_allowed_target_name_first_char(c: char) -> bool {
+    !is_makefile_whitespace(c) && c != '\n' && c != '\r' && c != ':'
+}
+
+fn is_allowed_target_name_tail_char(c: char) -> bool {
+    !is_makefile_whitespace(c) && c != '\n' && c != '\r' && c != ':'
 }
 
 fn is_makefile_whitespace(c: char) -> bool {
@@ -42,8 +49,9 @@ fn parse_optional_comment(input: &str) -> IResult<&str, ()> {
 }
 
 fn parse_target_name(input: &str) -> IResult<&str, TargetName> {
-    let (input, target_name) = take_while1(is_allowed_target_name_char)(input)?;
-    let target_name = TargetName(target_name.to_owned());
+    let (input, target_name_first_char) = take_while1(is_allowed_target_name_first_char)(input)?;
+    let (input, target_name_tail) = take_while(is_allowed_target_name_tail_char)(input)?;
+    let target_name = TargetName([target_name_first_char, target_name_tail].join(""));
     Ok((input, target_name))
 }
 
@@ -74,7 +82,17 @@ fn parse_makefile_target(input: &str) -> IResult<&str, Option<TargetGraph>> {
     let (input, _) = take_while(is_makefile_whitespace)(input)?;
     let (input, _) = parse_optional_comment(input)?;
 
-    target_graph.0.insert(target_name, dependencies);
+    target_graph.edges.insert(target_name, dependencies);
+    Ok((input, Some(target_graph)))
+}
+
+fn parse_default_goal(input: &str) -> IResult<&str, Option<TargetGraph>> {
+    let (input, _) = tag(".DEFAULT_GOAL := ")(input)?;
+    let (input, target_name) = parse_target_name(input)?;
+    let target_graph = TargetGraph {
+        edges: IndexMap::new(),
+        default_goal: Some(target_name),
+    };
     Ok((input, Some(target_graph)))
 }
 
@@ -90,10 +108,17 @@ fn parse_makefile(input: &str) -> IResult<&str, TargetGraph> {
     // TODO: fail on something that looks like a target declaration without valid deps.
     let (input, target_graphs) = separated_list0(
         alt((tag("\n"), tag("\r\n"))),
-        alt((parse_makefile_target, parse_ignored_line)),
+        alt((
+            parse_makefile_target,
+            parse_default_goal,
+            parse_ignored_line,
+        )),
     )(input)?;
     for target_graph in target_graphs.into_iter().flatten() {
-        main_target_graph.0.extend(target_graph.0);
+        main_target_graph.edges.extend(target_graph.edges);
+        if let Some(default_goal) = target_graph.default_goal {
+            main_target_graph.default_goal = Some(default_goal); // TODO: test against multiple default goals?
+        }
     }
 
     Ok((input, main_target_graph))

@@ -27,8 +27,9 @@ pub(crate) struct MakArgs {
     pub(crate) print_graph: bool,
 
     /// Print the the list of targets, one per line (instead of running anything).
+    /// Does not return an error when `Makefile` is missing, to avoid unexpected issues with shell completions.
     #[clap(long, group = "command-like", verbatim_doc_comment)]
-    pub(crate) print_targets: bool,
+    pub(crate) print_completion_targets: bool,
 
     /// Print completions for the given shell (instead of running anything).
     /// These can be loaded/stored permanently (e.g. when using Homebrew), but they can also be sourced directly, e.g.:
@@ -57,9 +58,9 @@ function __fish_complete_mak_targets
     # TODO: handle `-f=`?
     set -l file (string replace -rf '^mak .*((-f|--file)(=| +))([^ ]*) .*$' '$4' -- $argv)
     if test -n \"$file\"
-        mak --file \"$file\" --print-targets
+        mak --file \"$file\" --print-completion-targets
     else
-        mak --print-targets
+        mak --print-completion-targets
     end
 end
 complete -c mak -n 'commandline -ct | string match -q \"*=*\"' -a \"(__fish_complete_mak_targets (commandline -p))\" -d Target
