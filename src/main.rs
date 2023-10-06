@@ -39,23 +39,28 @@ fn main() {
         exit(0)
     }
 
-    let default_target_name = match target_graph.0.keys().next() {
-        Some(target_name) => target_name,
-        None => {
-            eprintln!("No target specified and no default target available");
-            exit(1)
-        }
-    };
-    let main_target_name = match options.target {
-        Some(target_name) => {
-            let target_name = TargetName(target_name);
-            if !target_graph.0.contains_key(&target_name) {
-                eprintln!("Unknown target specified: {}", target_name);
+    let target_names: Vec<TargetName> = if options.targets.is_empty() {
+        let default_target_name = match target_graph.0.keys().next() {
+            Some(target_name) => target_name.clone(),
+            None => {
+                eprintln!("No target specified and no default target available");
                 exit(1)
-            };
-            target_name
-        }
-        None => default_target_name.clone(),
+            }
+        };
+        vec![default_target_name]
+    } else {
+        options
+            .targets
+            .iter()
+            .map(|target_string| {
+                let target_name = TargetName(target_string.to_owned());
+                if !target_graph.0.contains_key(&target_name) {
+                    eprintln!("Unknown target specified: {}", target_name);
+                    exit(1)
+                };
+                target_name
+            })
+            .collect()
     };
 
     let multi_progress = Arc::new(MultiProgress::new());
@@ -67,12 +72,20 @@ fn main() {
         makefile_path,
     };
 
-    block_on(shared_make.make_target(&main_target_name, 0));
-    println!(
-        "Built {} targets in {:?}",
-        shared_make.futures.len(),
-        Instant::now() - start_time
-    );
+    block_on(shared_make.make_targets(&target_names));
+    if options.dry_run {
+        println!(
+            "Dry run found {} targets in {:?}",
+            shared_make.futures.len(),
+            Instant::now() - start_time
+        );
+    } else {
+        println!(
+            "Built {} targets in {:?}",
+            shared_make.futures.len(),
+            Instant::now() - start_time
+        );
+    }
 }
 
 type SharedFuture = futures::future::Shared<JoinHandle<()>>;
@@ -85,8 +98,18 @@ struct SharedMake {
 }
 
 impl SharedMake {
+    async fn make_targets(&mut self, target_names: &[TargetName]) {
+        join_all(
+            target_names
+                .iter()
+                .map(|target_name| self.make_target(target_name, 0)),
+        )
+        .await;
+    }
+
     fn make_target(&mut self, target_name: &TargetName, depth: usize) -> SharedFuture {
         if let Some(sender) = self.futures.get(target_name) {
+            // TODO: update depth if it decreased?
             return sender.clone();
         }
 
