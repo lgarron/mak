@@ -86,16 +86,24 @@ fn main() {
     };
 
     block_on(shared_make.make_targets(&target_names));
+    let num_main_targets = target_names.len();
+    let num_dependencies = shared_make.futures.len() - num_main_targets;
     if options.dry_run {
         println!(
-            "Dry run found {} targets in {:?}",
-            shared_make.futures.len(),
+            "Dry run found {} target{} and {} additional dependenc{} in {:?}",
+            num_main_targets,
+            if num_main_targets == 1 { "" } else { "s" },
+            num_dependencies,
+            if num_dependencies == 1 { "y" } else { "ies" },
             Instant::now() - start_time
         );
     } else {
         println!(
-            "Built {} targets in {:?}",
-            shared_make.futures.len(),
+            "Built {} target{} and {} additional dependenc{} in {:?}",
+            num_main_targets,
+            if num_main_targets == 1 { "" } else { "s" },
+            num_dependencies,
+            if num_dependencies == 1 { "y" } else { "ies" },
             Instant::now() - start_time
         );
     }
