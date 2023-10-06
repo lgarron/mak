@@ -4,7 +4,7 @@ mod options;
 use std::{
     collections::HashMap,
     fs::read_to_string,
-    path::Path,
+    path::{Path, PathBuf},
     process::{exit, Command},
 };
 
@@ -53,46 +53,52 @@ fn main() {
         None => default_target_name.clone(),
     };
 
-    block_on(make_target(
-        &mut HashMap::default(),
-        &target_graph,
-        &makefile_path,
-        &main_target_name,
-    ));
+    let mut info = SharedMakeInfo {
+        futures: HashMap::default(),
+        target_graph,
+        makefile_path,
+    };
+
+    block_on(info.make_target(&main_target_name));
 }
 
 type SharedFuture = futures::future::Shared<JoinHandle<()>>;
 
-fn make_target<'a>(
-    futures: &'a mut HashMap<TargetName, SharedFuture>,
-    target_graph: &'a TargetGraph,
-    makefile_path: &'a Path,
-    target_name: &'a TargetName,
-) -> SharedFuture {
-    if let Some(sender) = futures.get(target_name) {
-        return sender.clone();
+struct SharedMakeInfo {
+    futures: HashMap<TargetName, SharedFuture>,
+    target_graph: TargetGraph,
+    makefile_path: PathBuf,
+}
+
+impl SharedMakeInfo {
+    fn make_target(&mut self, target_name: &TargetName) -> SharedFuture {
+        if let Some(sender) = self.futures.get(target_name) {
+            return sender.clone();
+        }
+
+        let dependencies = self
+            .target_graph
+            .0
+            .get(target_name)
+            .expect("Internal error: Unexpectedly missing a target")
+            .clone();
+        let dependency_handles: Vec<SharedFuture> = dependencies
+            .iter()
+            .map(|target_name| (self.make_target(target_name)))
+            .collect();
+        let makefile_path_owned = self.makefile_path.to_owned();
+        let target_name_owned = target_name.clone();
+
+        let join_handle = task::spawn(async move {
+            let target_name_owned = target_name_owned;
+            join_all(dependency_handles).await;
+            make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
+        });
+        let join_handle = join_handle.shared();
+        self.futures
+            .insert(target_name.clone(), join_handle.clone());
+        join_handle
     }
-
-    let dependencies = target_graph
-        .0
-        .get(target_name)
-        .expect("Internal error: Unexpectedly missing a target")
-        .clone();
-    let dependency_handles: Vec<SharedFuture> = dependencies
-        .iter()
-        .map(|target_name| (make_target(futures, target_graph, makefile_path, target_name)))
-        .collect();
-    let makefile_path_owned = makefile_path.to_owned();
-    let target_name_owned = target_name.clone();
-
-    let join_handle = task::spawn(async move {
-        let target_name_owned = target_name_owned;
-        join_all(dependency_handles).await;
-        make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
-    });
-    let join_handle = join_handle.shared();
-    futures.insert(target_name.clone(), join_handle.clone());
-    join_handle
 }
 
 fn make_individual_dependency(
