@@ -5,6 +5,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
 mod options;
 use std::{
     collections::HashMap,
+    io::{BufRead, BufReader},
     path::Path,
     process::{exit, Command, Stdio},
     sync::Arc,
@@ -198,12 +199,20 @@ impl SharedMake {
             progress_bar.reset_elapsed();
             progress_bar.set_position(1);
             progress_bar.set_style(
-                ProgressStyle::with_template("{spinner} | {elapsed:>03} | {prefix} 🛠️")
-                    .expect("Could not construct progress bar."),
+                ProgressStyle::with_template(
+                    "{spinner} | {elapsed:>03} | {prefix:40} 🛠️ | {wide_msg}",
+                )
+                .expect("Could not construct progress bar."),
             );
             progress_bar.enable_steady_tick(Duration::from_millis(16));
 
-            make_individual_dependency(dependencies, &makefile_path_str_owned, &target_name_owned);
+            make_individual_dependency(
+                dependencies,
+                &makefile_path_str_owned,
+                &target_name_owned,
+                &progress_bar,
+            )
+            .await;
 
             progress_bar.set_position(2);
             progress_bar.set_style(
@@ -218,10 +227,11 @@ impl SharedMake {
     }
 }
 
-fn make_individual_dependency(
+async fn make_individual_dependency(
     dependencies: Vec<TargetName>,
     makefile_path_str: &Option<String>,
     target_name: &TargetName,
+    progress_bar: &ProgressBar,
 ) {
     let mut args = make_args(makefile_path_str);
     args.push(target_name.0.clone());
@@ -232,10 +242,48 @@ fn make_individual_dependency(
     }
     args.push("--".to_owned());
 
-    let _ = Command::new("make")
+    let child = Command::new("make")
         .args(args)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .expect("failed to execute process");
+
+    // TODO: deduplicate stderr and stdout implementations.
+    let stdout_reader = BufReader::new(
+        child
+            .stdout
+            .expect("Could not get stdout for a `make` invocation."),
+    );
+    let stdout_progress_bar_clone: ProgressBar = progress_bar.clone();
+    let stdout_handle: JoinHandle<()> = task::spawn(async move {
+        stdout_reader
+            .lines()
+            .map_while(Result::ok)
+            .for_each(|line| {
+                if !line.trim().is_empty() {
+                    stdout_progress_bar_clone.set_message(line)
+                }
+            });
+    });
+
+    let stderr_reader = BufReader::new(
+        child
+            .stderr
+            .expect("Could not get stdout for a `make` invocation."),
+    );
+    let stderr_progress_bar_clone: ProgressBar = progress_bar.clone();
+    let stderr_handle: JoinHandle<()> = task::spawn(async move {
+        stderr_reader
+            .lines()
+            .map_while(Result::ok)
+            .for_each(|line| {
+                if !line.trim().is_empty() {
+                    stderr_progress_bar_clone.set_message(line)
+                }
+            });
+    });
+    join_all([stdout_handle, stderr_handle]).await;
 }
 
 fn make_args(makefile_path_str: &Option<String>) -> Vec<String> {
