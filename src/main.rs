@@ -1,15 +1,15 @@
+use async_std::task::{self, block_on, JoinHandle};
+use futures::{future::join_all, FutureExt};
 mod options;
 use std::{
     collections::HashMap,
-    fs::{self},
+    fs::read_to_string,
     path::Path,
     process::{exit, Command},
-    thread::spawn,
 };
 
 use options::get_options;
 use parse::TargetName;
-use spmc::Receiver;
 
 use crate::parse::TargetGraph;
 
@@ -19,7 +19,7 @@ fn main() {
     let options = get_options();
 
     let makefile_path = options.makefile_path.unwrap_or("Makefile".into());
-    let makefile_contents = fs::read_to_string(&makefile_path).unwrap_or_else(|_| {
+    let makefile_contents = read_to_string(&makefile_path).unwrap_or_else(|_| {
         eprintln!("Could not read Makefile");
         exit(1)
     });
@@ -53,66 +53,46 @@ fn main() {
         None => default_target_name.clone(),
     };
 
-    make_target(
+    block_on(make_target(
         &mut HashMap::default(),
         &target_graph,
         &makefile_path,
         &main_target_name,
-    )
-    .recv()
-    .expect("Main target did not build successfully.")
+    ));
 }
 
-fn make_target(
-    signals: &mut HashMap<TargetName, Receiver<()>>,
-    target_graph: &TargetGraph,
-    makefile_path: &Path,
-    target_name: &TargetName,
-) -> Receiver<()> {
-    if let Some(receiver) = signals.get(target_name) {
-        return receiver.clone();
+type SharedFuture = futures::future::Shared<JoinHandle<()>>;
+
+fn make_target<'a>(
+    signals: &'a mut HashMap<TargetName, SharedFuture>,
+    target_graph: &'a TargetGraph,
+    makefile_path: &'a Path,
+    target_name: &'a TargetName,
+) -> SharedFuture {
+    if let Some(sender) = signals.get(target_name) {
+        return sender.clone();
     }
-    let (mut tx, rx) = spmc::channel::<()>();
-    signals.insert(target_name.clone(), rx.clone());
 
     let dependencies = target_graph
         .0
         .get(target_name)
         .expect("Internal error: Unexpectedly missing a target")
         .clone();
-    let dependency_receivers: Vec<(TargetName, Receiver<()>)> = dependencies
+    let dependency_handles: Vec<SharedFuture> = dependencies
         .iter()
-        .map(|target_name| {
-            (
-                target_name.clone(),
-                make_target(signals, target_graph, makefile_path, target_name),
-            )
-        })
+        .map(|target_name| (make_target(signals, target_graph, makefile_path, target_name)))
         .collect();
     let makefile_path_owned = makefile_path.to_owned();
     let target_name_owned = target_name.clone();
 
-    spawn(move || {
+    let join_handle = task::spawn(async move {
         let target_name_owned = target_name_owned;
-        for (dependency_target_name, dependency_receiver) in dependency_receivers {
-            match dependency_receiver.recv() {
-                Ok(_) => (),
-                Err(err) => {
-                    eprintln!("----------------");
-                    eprintln!("A dependency did not build successfully.");
-                    eprintln!("Target: {}", target_name_owned);
-                    eprintln!("Dependency: {}", dependency_target_name);
-                    eprintln!("Error: {}", err);
-                    eprintln!("----------------");
-                    exit(1);
-                }
-            }
-        }
+        join_all(dependency_handles).await;
         make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
-        tx.send(())
-            .expect("Internal error: could not coordinate dependencies");
     });
-    rx
+    let join_handle = join_handle.shared();
+    signals.insert(target_name.clone(), join_handle.clone());
+    join_handle
 }
 
 fn make_individual_dependency(
