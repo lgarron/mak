@@ -219,6 +219,7 @@ impl SharedMake {
                 ProgressStyle::with_template("🎯| {elapsed:>03} | {prefix}")
                     .expect("Could not construct progress bar."),
             );
+            progress_bar.finish()
         });
         let join_handle = join_handle.shared();
         self.futures
@@ -242,7 +243,7 @@ async fn make_individual_dependency(
     }
     args.push("--".to_owned());
 
-    let child = Command::new("make")
+    let mut child = Command::new("make")
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -253,10 +254,11 @@ async fn make_individual_dependency(
     let stdout_reader = BufReader::new(
         child
             .stdout
+            .take()
             .expect("Could not get stdout for a `make` invocation."),
     );
     let stdout_progress_bar_clone: ProgressBar = progress_bar.clone();
-    let stdout_handle: JoinHandle<()> = task::spawn(async move {
+    task::spawn(async move {
         stdout_reader
             .lines()
             .map_while(Result::ok)
@@ -270,10 +272,11 @@ async fn make_individual_dependency(
     let stderr_reader = BufReader::new(
         child
             .stderr
+            .take()
             .expect("Could not get stdout for a `make` invocation."),
     );
     let stderr_progress_bar_clone: ProgressBar = progress_bar.clone();
-    let stderr_handle: JoinHandle<()> = task::spawn(async move {
+    task::spawn(async move {
         stderr_reader
             .lines()
             .map_while(Result::ok)
@@ -283,7 +286,9 @@ async fn make_individual_dependency(
                 }
             });
     });
-    join_all([stdout_handle, stderr_handle]).await;
+    child
+        .wait()
+        .expect("Error while waiting for a `make` invocation to finish");
 }
 
 fn make_args(makefile_path_str: &Option<String>) -> Vec<String> {
