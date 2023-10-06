@@ -1,11 +1,14 @@
 use async_std::task::{self, block_on, JoinHandle};
 use futures::{future::join_all, FutureExt};
+use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
 mod options;
 use std::{
     collections::HashMap,
     fs::read_to_string,
     path::{Path, PathBuf},
     process::{exit, Command},
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use options::get_options;
@@ -16,6 +19,7 @@ use crate::parse::TargetGraph;
 mod parse;
 
 fn main() {
+    let start_time = Instant::now();
     let options = get_options();
 
     let makefile_path = options.makefile_path.unwrap_or("Makefile".into());
@@ -53,25 +57,34 @@ fn main() {
         None => default_target_name.clone(),
     };
 
-    let mut info = SharedMakeInfo {
+    let multi_progress = Arc::new(MultiProgress::new());
+
+    let mut shared_make = SharedMake {
+        multi_progress: multi_progress.clone(),
         futures: HashMap::default(),
         target_graph,
         makefile_path,
     };
 
-    block_on(info.make_target(&main_target_name));
+    block_on(shared_make.make_target(&main_target_name, 0));
+    println!(
+        "Built {} targets in {:?}",
+        shared_make.futures.len(),
+        Instant::now() - start_time
+    );
 }
 
 type SharedFuture = futures::future::Shared<JoinHandle<()>>;
 
-struct SharedMakeInfo {
+struct SharedMake {
+    multi_progress: Arc<MultiProgress>,
     futures: HashMap<TargetName, SharedFuture>,
     target_graph: TargetGraph,
     makefile_path: PathBuf,
 }
 
-impl SharedMakeInfo {
-    fn make_target(&mut self, target_name: &TargetName) -> SharedFuture {
+impl SharedMake {
+    fn make_target(&mut self, target_name: &TargetName, depth: usize) -> SharedFuture {
         if let Some(sender) = self.futures.get(target_name) {
             return sender.clone();
         }
@@ -84,15 +97,42 @@ impl SharedMakeInfo {
             .clone();
         let dependency_handles: Vec<SharedFuture> = dependencies
             .iter()
-            .map(|target_name| (self.make_target(target_name)))
+            .map(|target_name| (self.make_target(target_name, depth + 1)))
             .collect();
         let makefile_path_owned = self.makefile_path.to_owned();
         let target_name_owned = target_name.clone();
+        let multi_progress_owned = self.multi_progress.clone();
 
+        let progress_bar = ProgressBar::new(2);
+        let progress_bar = multi_progress_owned.insert_from_back(0, progress_bar);
         let join_handle = task::spawn(async move {
-            let target_name_owned = target_name_owned;
+            let progress_bar = progress_bar.with_finish(ProgressFinish::AndLeave);
+            let indentation = match depth {
+                0 => "".to_owned(),
+                depth => format!("{}{} ", " ".repeat(depth - 1), "↱"),
+            };
+            progress_bar.set_prefix(format!("{}{}", indentation, target_name_owned));
+            progress_bar.set_message("Running…");
+            progress_bar.set_position(0);
+            progress_bar.set_style(
+                ProgressStyle::with_template("⏳|   ⋯ | {prefix:20}")
+                    .expect("Could not construct progress bar."),
+            );
+
             join_all(dependency_handles).await;
+            progress_bar.set_position(1);
+            progress_bar.set_style(
+                ProgressStyle::with_template("{spinner} | {elapsed:>03} | {prefix:20}")
+                    .expect("Could not construct progress bar."),
+            );
+            progress_bar.enable_steady_tick(Duration::from_millis(16));
+
             make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
+            progress_bar.set_position(2);
+            progress_bar.set_style(
+                ProgressStyle::with_template("✅| {elapsed:>03} | {prefix:20}")
+                    .expect("Could not construct progress bar."),
+            );
         });
         let join_handle = join_handle.shared();
         self.futures
@@ -114,11 +154,11 @@ fn make_individual_dependency(
         args.push(&dependency.0);
     }
 
-    println!("[{}] Starting…", target_name);
+    // println!("[{}] Starting…", target_name);
     let _ = Command::new("make")
         .args(args)
         .output()
         .expect("failed to execute process");
-    println!("[{}] Finished.", target_name);
+    // println!("[{}] Finished.", target_name);
     // dbg!(output);
 }
