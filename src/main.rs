@@ -64,12 +64,12 @@ fn main() {
 type SharedFuture = futures::future::Shared<JoinHandle<()>>;
 
 fn make_target<'a>(
-    signals: &'a mut HashMap<TargetName, SharedFuture>,
+    futures: &'a mut HashMap<TargetName, SharedFuture>,
     target_graph: &'a TargetGraph,
     makefile_path: &'a Path,
     target_name: &'a TargetName,
 ) -> SharedFuture {
-    if let Some(sender) = signals.get(target_name) {
+    if let Some(sender) = futures.get(target_name) {
         return sender.clone();
     }
 
@@ -80,7 +80,7 @@ fn make_target<'a>(
         .clone();
     let dependency_handles: Vec<SharedFuture> = dependencies
         .iter()
-        .map(|target_name| (make_target(signals, target_graph, makefile_path, target_name)))
+        .map(|target_name| (make_target(futures, target_graph, makefile_path, target_name)))
         .collect();
     let makefile_path_owned = makefile_path.to_owned();
     let target_name_owned = target_name.clone();
@@ -91,7 +91,7 @@ fn make_target<'a>(
         make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
     });
     let join_handle = join_handle.shared();
-    signals.insert(target_name.clone(), join_handle.clone());
+    futures.insert(target_name.clone(), join_handle.clone());
     join_handle
 }
 
