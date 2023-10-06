@@ -230,6 +230,7 @@ fn make_individual_dependency(
         args.push("-o".to_owned());
         args.push(dependency.0.clone());
     }
+    args.push("--".to_owned());
 
     let _ = Command::new("make")
         .args(args)
