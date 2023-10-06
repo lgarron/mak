@@ -24,8 +24,9 @@ fn main() {
 
     let makefile_path = options.makefile_path.unwrap_or("Makefile".into());
     let makefile_contents = read_to_string(&makefile_path).unwrap_or_else(|_| {
-        eprintln!("Could not read Makefile");
-        exit(1)
+        println!("No Makefile specified and no file found called `Makefile`");
+        println!("For more details, run: mak -h");
+        exit(0);
     });
     let target_graph: TargetGraph =
         TargetGraph::try_from(&makefile_contents).expect("Could not parse Makefile");
