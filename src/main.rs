@@ -151,7 +151,7 @@ impl SharedMake {
         let progress_bar = ProgressBar::new(2);
         let progress_bar = multi_progress_owned.insert_from_back(0, progress_bar);
         progress_bar.set_style(
-            ProgressStyle::with_template("  |   ⋯ | {prefix:20}")
+            ProgressStyle::with_template("  |   ⋯ | {prefix}")
                 .expect("Could not construct progress bar."),
         );
         let progress_bar = progress_bar.with_finish(ProgressFinish::AndLeave);
@@ -167,7 +167,7 @@ impl SharedMake {
             progress_bar.reset_elapsed();
             progress_bar.set_position(1);
             progress_bar.set_style(
-                ProgressStyle::with_template("{spinner} | {elapsed:>03} | {prefix:20}")
+                ProgressStyle::with_template("{spinner} | {elapsed:>03} | {prefix} 🛠️")
                     .expect("Could not construct progress bar."),
             );
             progress_bar.enable_steady_tick(Duration::from_millis(16));
@@ -176,7 +176,7 @@ impl SharedMake {
 
             progress_bar.set_position(2);
             progress_bar.set_style(
-                ProgressStyle::with_template("🎯| {elapsed:>03} | {prefix:20}")
+                ProgressStyle::with_template("🎯| {elapsed:>03} | {prefix}")
                     .expect("Could not construct progress bar."),
             );
         });
