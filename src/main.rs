@@ -105,6 +105,10 @@ impl SharedMake {
 
         let progress_bar = ProgressBar::new(2);
         let progress_bar = multi_progress_owned.insert_from_back(0, progress_bar);
+        progress_bar.set_style(
+            ProgressStyle::with_template("⏳|   ⋯ | {prefix:20}")
+                .expect("Could not construct progress bar."),
+        );
         let join_handle = task::spawn(async move {
             let progress_bar = progress_bar.with_finish(ProgressFinish::AndLeave);
             let indentation = match depth {
@@ -114,12 +118,10 @@ impl SharedMake {
             progress_bar.set_prefix(format!("{}{}", indentation, target_name_owned));
             progress_bar.set_message("Running…");
             progress_bar.set_position(0);
-            progress_bar.set_style(
-                ProgressStyle::with_template("⏳|   ⋯ | {prefix:20}")
-                    .expect("Could not construct progress bar."),
-            );
 
             join_all(dependency_handles).await;
+
+            progress_bar.reset_elapsed();
             progress_bar.set_position(1);
             progress_bar.set_style(
                 ProgressStyle::with_template("{spinner} | {elapsed:>03} | {prefix:20}")
@@ -128,6 +130,7 @@ impl SharedMake {
             progress_bar.enable_steady_tick(Duration::from_millis(16));
 
             make_individual_dependency(dependencies, &makefile_path_owned, &target_name_owned);
+
             progress_bar.set_position(2);
             progress_bar.set_style(
                 ProgressStyle::with_template("✅| {elapsed:>03} | {prefix:20}")
