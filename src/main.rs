@@ -183,13 +183,13 @@ impl SharedMake {
         let progress_bar = ProgressBar::new(2);
         let progress_bar = multi_progress_owned.insert_from_back(0, progress_bar);
         progress_bar.set_style(
-            ProgressStyle::with_template("  |      ⋯ | {prefix}")
+            ProgressStyle::with_template("     ⋯    {prefix}")
                 .expect("Could not construct progress bar."),
         );
         let progress_bar = progress_bar.with_finish(ProgressFinish::AndLeave);
         let indentation = match depth {
-            0 => "".to_owned(),
-            depth => format!("{}{} ", " ".repeat(depth - 1), "↙"),
+            0 => "🎯".to_owned(),
+            depth => format!("{}{} ", "  ".repeat(depth), "↙"),
         };
         progress_bar.set_prefix(format!("{}{}", indentation, target_name_owned));
         progress_bar.set_position(0);
@@ -199,10 +199,8 @@ impl SharedMake {
             progress_bar.reset_elapsed();
             progress_bar.set_position(1);
             progress_bar.set_style(
-                ProgressStyle::with_template(
-                    "{spinner} | {elapsed:>06} | {prefix:40} 🛠️ | {wide_msg}",
-                )
-                .expect("Could not construct progress bar."),
+                ProgressStyle::with_template("{elapsed:>06} {spinner}  {prefix:40} 🛠️ | {wide_msg}")
+                    .expect("Could not construct progress bar."),
             );
             progress_bar.enable_steady_tick(Duration::from_millis(16));
 
@@ -216,7 +214,7 @@ impl SharedMake {
 
             progress_bar.set_position(2);
             progress_bar.set_style(
-                ProgressStyle::with_template("🎯| {elapsed:>06} | {prefix}")
+                ProgressStyle::with_template("{elapsed:>06} ✅ {prefix}")
                     .expect("Could not construct progress bar."),
             );
             progress_bar.finish()
