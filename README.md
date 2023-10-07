@@ -1,4 +1,4 @@
-#/`mak`
+# `mak`
 
 `make`, but `mak` it faster.
 
@@ -18,7 +18,7 @@ npm install
 
 mak test-all
 ```
-![`mak` in action](/removed/from/history/to/save/git/history/space/)
+![`mak` in action](readme/screenshot.png)
 
 ```shell
 git clone https://github.com/cubing/cubing.js && cd cubing.js
@@ -27,4 +27,4 @@ npm install
 mak test-fast
 ```
 
-<img width="1267" alg="`mak` in action" src="/removed/from/history/to/save/git/history/space/">
+<img width="1267" alg="`mak` in action" src="readme/demo.gif">
