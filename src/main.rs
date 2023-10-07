@@ -8,7 +8,7 @@ use std::{
     io::{BufRead, BufReader},
     path::Path,
     process::{exit, Command, Stdio},
-    sync::Arc,
+    sync::{mpsc, Arc},
     time::{Duration, Instant},
 };
 
@@ -80,7 +80,9 @@ fn main() {
             .keys()
             .map(|target_name| target_name.to_string())
             .collect();
-        println!("{}", lines.join("\n"));
+        for line in lines {
+            println!("{}", line);
+        }
         exit(0)
     }
 
@@ -184,7 +186,7 @@ impl SharedMake {
         let progress_bar = multi_progress_owned.insert_from_back(0, progress_bar);
         progress_bar.set_style(
             ProgressStyle::with_template("     ⋯    {prefix}")
-                .expect("Could not construct progress bar."),
+                .expect("Could not construct progress bar template."),
         );
         let progress_bar = progress_bar.with_finish(ProgressFinish::AndLeave);
         let indentation = match depth {
@@ -204,7 +206,7 @@ impl SharedMake {
             );
             progress_bar.enable_steady_tick(Duration::from_millis(16));
 
-            make_individual_dependency(
+            let result = make_individual_target(
                 dependencies,
                 &makefile_path_str_owned,
                 &target_name_owned,
@@ -213,11 +215,50 @@ impl SharedMake {
             .await;
 
             progress_bar.set_position(2);
-            progress_bar.set_style(
-                ProgressStyle::with_template("{elapsed:>06} ✅ {prefix}")
-                    .expect("Could not construct progress bar."),
-            );
-            progress_bar.finish()
+            match result {
+                IndividualTargetResult::Success() => {
+                    progress_bar.set_style(
+                        ProgressStyle::with_template("{elapsed:>06} ✅ {prefix}")
+                            .expect("Could not construct progress bar template."),
+                    );
+                    progress_bar.finish();
+                }
+                IndividualTargetResult::Failure(output_lines) => {
+                    progress_bar.set_style(
+                        ProgressStyle::with_template("{elapsed:>06} ❌ {prefix}")
+                            .expect("Could not construct progress bar template."),
+                    );
+
+                    println!("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
+                    println!("❌");
+                    println!("❌ Target failed:");
+                    println!("❌");
+                    println!("❌     {}", target_name_owned);
+                    println!("❌");
+                    println!("❌ ⬇ See below for output. ⬇");
+                    println!("❌");
+                    println!("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
+
+                    for output_line in output_lines {
+                        match output_line {
+                            OutputLine::Stdout(line) => println!("{}", line),
+                            OutputLine::Stderr(line) => eprintln!("{}", line),
+                        }
+                    }
+
+                    println!("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
+                    println!("❌");
+                    println!("❌ ⬆  See above for output. ⬆");
+                    println!("❌");
+                    println!("❌ Target failed:");
+                    println!("❌");
+                    println!("❌     {}", target_name_owned);
+                    println!("❌");
+                    println!("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
+
+                    exit(1)
+                }
+            }
         });
         let join_handle = join_handle.shared();
         self.futures
@@ -226,12 +267,23 @@ impl SharedMake {
     }
 }
 
-async fn make_individual_dependency(
+enum OutputLine {
+    Stdout(String),
+    Stderr(String),
+}
+
+enum IndividualTargetResult {
+    Success(),
+    #[allow(clippy::type_complexity)]
+    Failure(mpsc::Receiver<OutputLine>),
+}
+
+async fn make_individual_target(
     dependencies: Vec<TargetName>,
     makefile_path_str: &Option<String>,
     target_name: &TargetName,
     progress_bar: &ProgressBar,
-) {
+) -> IndividualTargetResult {
     let mut args = make_args(makefile_path_str);
     args.push(target_name.0.clone());
 
@@ -248,7 +300,10 @@ async fn make_individual_dependency(
         .spawn()
         .expect("failed to execute process");
 
+    let (sender, receiver) = mpsc::channel::<OutputLine>();
+
     // TODO: deduplicate stderr and stdout implementations.
+    let sender_clone = sender.clone();
     let stdout_reader = BufReader::new(
         child
             .stdout
@@ -256,14 +311,16 @@ async fn make_individual_dependency(
             .expect("Could not get stdout for a `make` invocation."),
     );
     let stdout_progress_bar_clone: ProgressBar = progress_bar.clone();
-    task::spawn(async move {
+    let stdout_join_handle = task::spawn(async move {
         stdout_reader
             .lines()
             .map_while(Result::ok)
-            .for_each(|line| {
+            .for_each(move |line| {
                 if !line.trim().is_empty() {
-                    stdout_progress_bar_clone.set_message(line)
-                }
+                    stdout_progress_bar_clone.set_message(line.clone())
+                };
+                // Ignore `send` failures, since those could be due to closing down the program from a target failure somewhere else.
+                let _ = sender_clone.send(OutputLine::Stdout(line));
             });
     });
 
@@ -274,19 +331,28 @@ async fn make_individual_dependency(
             .expect("Could not get stdout for a `make` invocation."),
     );
     let stderr_progress_bar_clone: ProgressBar = progress_bar.clone();
-    task::spawn(async move {
+    let stderr_join_handle = task::spawn(async move {
         stderr_reader
             .lines()
             .map_while(Result::ok)
-            .for_each(|line| {
+            .for_each(move |line| {
                 if !line.trim().is_empty() {
-                    stderr_progress_bar_clone.set_message(line)
-                }
-            });
+                    stderr_progress_bar_clone.set_message(line.clone())
+                };
+                // Ignore `send` failures, since those could be due to closing down the program from a target failure somewhere else.
+                let _ = sender.send(OutputLine::Stderr(line));
+            })
     });
-    child
+    if child
         .wait()
-        .expect("Error while waiting for a `make` invocation to finish");
+        .expect("Error while waiting for a `make` invocation to finish")
+        .success()
+    {
+        IndividualTargetResult::Success()
+    } else {
+        join_all([stdout_join_handle, stderr_join_handle]).await;
+        IndividualTargetResult::Failure(receiver)
+    }
 }
 
 fn make_args(makefile_path_str: &Option<String>) -> Vec<String> {
