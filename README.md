@@ -1,6 +1,6 @@
 # `mak`
 
-`make`, but `mak` it faster.
+`make`, but `mak` it shorter.
 
 Run `make` with maximum parallelism and get a live overview of the progress.
 

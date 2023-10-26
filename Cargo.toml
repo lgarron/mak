@@ -3,7 +3,7 @@ name = "mak"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "make, but mak it faster"
+description = "make, but mak it shorter"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
