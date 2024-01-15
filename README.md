@@ -14,7 +14,7 @@ brew install --HEAD lgarron/lgarron/mak
 
 ```shell
 git clone https://github.com/cubing/cubing.js && cd cubing.js
-npm install
+make setup
 
 mak test-all
 ```
@@ -22,7 +22,7 @@ mak test-all
 
 ```shell
 git clone https://github.com/cubing/cubing.js && cd cubing.js
-npm install
+make quick-setup
 
 mak test-fast
 ```
