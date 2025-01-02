@@ -680,7 +680,8 @@ impl TickerControl {
             drop(arc); // Also need to drop Arc otherwise BarState won't be dropped
 
             // Wait for `interval` but return early if we are notified to stop
-            let (_, result) = self
+            // TODO: `_unused` is needed to avoid a compiler error.
+            let (_unused, result) = self
                 .stopping
                 .1
                 .wait_timeout_while(self.stopping.0.lock().unwrap(), interval, |stopped| {
