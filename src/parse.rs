@@ -130,8 +130,8 @@ impl TryFrom<&String> for TargetGraph {
     fn try_from(value: &String) -> Result<Self, Self::Error> {
         match all_consuming(parse_makefile)(value) {
             Ok((_, target_graph)) => Ok(target_graph),
-            Err(s) => {
-                eprintln!("Makefile parsing error: {}", s);
+            Err(e) => {
+                eprintln!("Makefile parsing error: {:#?}", e);
                 Err("Invalid Makefile".into()) // TODO: pass on error
             }
         }
