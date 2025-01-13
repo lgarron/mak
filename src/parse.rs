@@ -3,7 +3,7 @@ use std::fmt::Display;
 use indexmap::IndexMap;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_till, take_while, take_while1},
+    bytes::complete::{tag, take_till, take_until, take_while, take_while1},
     combinator::{all_consuming, not, opt},
     multi::{many0, separated_list0},
     IResult,
@@ -55,6 +55,13 @@ fn parse_target_name(input: &str) -> IResult<&str, TargetName> {
     Ok((input, target_name))
 }
 
+fn take_until_newline(input: &str) -> IResult<&str, ()> {
+    // TODO: allow end of file as well?
+    let (input, _) = take_until("\n")(input)?;
+    let (input, _) = tag("\n")(input)?;
+    Ok((input, ()))
+}
+
 // Starts with optional whitespace
 fn parse_dependency(input: &str) -> IResult<&str, TargetName> {
     let (input, _) = many0(alt((
@@ -96,6 +103,13 @@ fn parse_default_goal(input: &str) -> IResult<&str, Option<TargetGraph>> {
     Ok((input, Some(target_graph)))
 }
 
+fn parse_two_line_define(input: &str) -> IResult<&str, Option<TargetGraph>> {
+    let (input, _) = tag("define ")(input)?;
+    let (input, _) = take_until_newline(input)?;
+    let (input, _) = take_until_newline(input)?;
+    Ok((input, None))
+}
+
 fn parse_ignored_line(input: &str) -> IResult<&str, Option<TargetGraph>> {
     not(target_name_with_colon)(input)?;
     let (input, _) = take_till(|c| c == '\n')(input)?;
@@ -109,6 +123,7 @@ fn parse_makefile(input: &str) -> IResult<&str, TargetGraph> {
     let (input, target_graphs) = separated_list0(
         alt((tag("\n"), tag("\r\n"))),
         alt((
+            parse_two_line_define, // Takes priority due to similar syntax
             parse_makefile_target,
             parse_default_goal,
             parse_ignored_line,
