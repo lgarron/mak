@@ -14,3 +14,5 @@ uninstall:
 clean:
 	rm -rf ./target
 
+.PHONY: reset
+reset: clean
