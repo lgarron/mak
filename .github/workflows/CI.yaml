@@ -9,8 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-        with:
-          bun-version: latest
+      - uses: oven-sh/setup-bun@v1
       - run: make build
       - run: mak --completions fish
       - run: mak --file Makefile-examples/hello.Makefile --print-completion-targets
