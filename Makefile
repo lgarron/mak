@@ -20,3 +20,13 @@ reset: clean
 .PHONY: publish
 publish:
 	cargo publish
+
+.PHONY: test
+test: test-build
+
+.PHONY: test-build
+test-build: build
+	./target/release/mak --completions fish
+	./target/release/mak --file Makefile-examples/hello.Makefile --print-completion-targets
+	./target/release/mak --file Makefile-examples/cubing.js.Makefile --print-graph
+	./target/release/mak --file Makefile-examples/hello.Makefile
