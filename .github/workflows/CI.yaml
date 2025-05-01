@@ -11,7 +11,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v1
       - run: make build
-      - run: mak --completions fish
-      - run: mak --file Makefile-examples/hello.Makefile --print-completion-targets
-      - run: mak --file Makefile-examples/cubing.js.Makefile --print-graph
-      - run: mak --file Makefile-examples/hello.Makefile
+      - run: ./target/release/mak --completions fish
+      - run: ./target/release/mak --file Makefile-examples/hello.Makefile --print-completion-targets
+      - run: ./target/release/mak --file Makefile-examples/cubing.js.Makefile --print-graph
+      - run: ./target/release/mak --file Makefile-examples/hello.Makefile
