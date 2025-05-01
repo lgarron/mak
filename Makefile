@@ -16,3 +16,7 @@ clean:
 
 .PHONY: reset
 reset: clean
+
+.PHONY: publish
+publish:
+	cargo publish
