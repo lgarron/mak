@@ -1,6 +1,6 @@
 [package]
 name = "mak"
-version = "0.1.0"
+version = "0.1.0-alpha1"
 edition = "2021"
 license = "MIT"
 description = "make, but mak it shorter"
