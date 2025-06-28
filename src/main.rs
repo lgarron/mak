@@ -201,8 +201,10 @@ impl SharedMake {
             progress_bar.reset_elapsed();
             progress_bar.set_position(1);
             progress_bar.set_style(
-                ProgressStyle::with_template("{elapsed:>06} {spinner}  {prefix:40} 🛠️ | {wide_msg}")
-                    .expect("Could not construct progress bar."),
+                ProgressStyle::with_template(
+                    "{elapsed:>06} {spinner}  {prefix:40} 🛠️ | {wide_msg}",
+                )
+                .expect("Could not construct progress bar."),
             );
             progress_bar.enable_steady_tick(Duration::from_millis(16));
 

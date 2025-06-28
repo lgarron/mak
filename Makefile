@@ -30,3 +30,13 @@ test-build: build
 	./target/release/mak --file Makefile-examples/hello.Makefile --print-completion-targets
 	./target/release/mak --file Makefile-examples/cubing.js.Makefile --print-graph
 	./target/release/mak --file Makefile-examples/hello.Makefile
+
+.PHONY: lint
+lint:
+	cargo clippy -- --deny warnings
+	cargo fmt --check
+
+.PHONY: format
+format:
+	cargo clippy --fix --allow-no-vcs
+	cargo fmt
