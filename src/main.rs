@@ -168,12 +168,14 @@ impl SharedMake {
             return sender.clone();
         }
 
-        let dependencies = self
-            .target_graph
-            .edges
-            .get(target_name)
-            .expect("Internal error: Unexpectedly missing a target")
-            .clone();
+        let Some(dependencies) = self.target_graph.edges.get(target_name) else {
+            eprintln!(
+                "Internal error: Unexpectedly missing a target: {}",
+                target_name
+            );
+            exit(1);
+        };
+        let dependencies = dependencies.clone();
         let dependency_handles: Vec<SharedFuture> = dependencies
             .iter()
             .map(|target_name| (self.make_target(target_name, depth + 1)))
