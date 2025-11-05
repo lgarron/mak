@@ -22,7 +22,11 @@ publish:
 	cargo publish
 
 .PHONY: test
-test: test-build
+test: cargo-test test-build
+
+.PHONY: cargo-test
+cargo-test:
+	cargo test
 
 .PHONY: test-build
 test-build: build

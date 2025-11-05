@@ -10,6 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - run: make build
+      - run: make cargo-test
       - run: make test-build
 
   lint:
