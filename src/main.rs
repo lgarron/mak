@@ -178,7 +178,7 @@ impl SharedMake {
         let dependencies = dependencies.clone();
         let dependency_handles: Vec<SharedFuture> = dependencies
             .iter()
-            .map(|target_name| (self.make_target(target_name, depth + 1)))
+            .map(|target_name| self.make_target(target_name, depth + 1))
             .collect();
         let makefile_path_str_owned = self.makefile_path_str.to_owned();
         let target_name_owned = target_name.clone();
