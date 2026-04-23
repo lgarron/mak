@@ -260,6 +260,8 @@ impl SharedMake {
                     println!("❌");
                     println!("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
 
+                    // multi_progress_owned.clear().unwrap();
+                    Command::new("tput").arg("reset").output().unwrap();
                     exit(1)
                 }
             }
