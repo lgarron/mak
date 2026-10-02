@@ -65,10 +65,13 @@ pub(crate) fn get_options() -> MakArgs {
     let args = MakArgs::parse();
     if let Some(shell) = args.completions {
         completions_for_shell(&mut command, shell, args.bin_name.clone());
+        let bin_name = args
+            .bin_name
+            .unwrap_or_else(|| command.get_name().to_owned());
         if shell == Shell::Fish {
             // Complete targets for `fish` similarly to https://github.com/fish-shell/fish-shell/blob/3ce67ecbd2348fbe13e86a00bea6ce998710729a/share/completions/make.fish
             println!("
-function {bin_name}
+function {function_name}
     # TODO: handle `-f=`?
     set -l file (string replace -rf '^mak .*((-f|--file)(=| +))([^ ]*) .*$' '$4' -- $argv)
     if test -n \"$file\"
@@ -77,12 +80,13 @@ function {bin_name}
         {executable_path} --print-completion-targets
     end
 end
-complete -c {bin_name} -n 'commandline -ct | string match -q \"*=*\"' -a \"({bin_name} (commandline -p))\" -d Target
-complete -f -c {bin_name} -n 'commandline -ct | not string match -q \"*=*\"' -a \"({bin_name} (commandline -p))\" -d Target
+complete -c {bin_name} -n 'commandline -ct | string match -q \"*=*\"' -a \"({function_name} (commandline -p))\" -d Target
+complete -f -c {bin_name} -n 'commandline -ct | not string match -q \"*=*\"' -a \"({function_name} (commandline -p))\" -d Target
 ", 
-    executable_path=current_exe().unwrap().to_string_lossy(),
-    bin_name=args.bin_name.unwrap_or_else(||command.get_name().to_owned())
-);
+                executable_path=current_exe().unwrap().to_string_lossy(),
+                bin_name=bin_name,
+                function_name=format!("__fish_complete_targets_{}", bin_name)
+            );
         }
         exit(0);
     }
