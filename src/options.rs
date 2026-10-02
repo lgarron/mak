@@ -40,10 +40,10 @@ pub(crate) struct MakArgs {
     #[clap(long, group = "command-like", verbatim_doc_comment, id = "SHELL")]
     pub(crate) completions: Option<Shell>,
 
-    // TODO: `requires("completions")` doesn't work?
     /// Binary name for `--completions` (not used otherwise).
     /// This name is not validated. Whitespace will break functionality.
-    #[clap(long, requires("completions"))]
+    // TODO: why does `requires("completions")` cause `cargo test` to fail?
+    #[clap(long)]
     bin_name: Option<String>,
 }
 
