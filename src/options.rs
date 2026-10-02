@@ -42,7 +42,8 @@ pub(crate) struct MakArgs {
 
     // TODO: `requires("completions")` doesn't work?
     /// Binary name for `--completions` (not used otherwise).
-    #[clap(long)]
+    /// This name is not validated. Whitespace will break functionality.
+    #[clap(long, requires("completions"))]
     bin_name: Option<String>,
 }
 
@@ -89,6 +90,9 @@ complete -f -c {bin_name} -n 'commandline -ct | not string match -q \"*=*\"' -a 
             );
         }
         exit(0);
+    } else if args.bin_name.is_some() {
+        eprintln!("Error: --bin-name arg passed without --completions");
+        exit(1);
     }
 
     args
