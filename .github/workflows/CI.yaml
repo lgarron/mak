@@ -7,8 +7,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@v4.4.0
+      - uses: Swatinem/rust-cache@v2.9.3
       - run: make build
       - run: make cargo-test
       - run: make test-build
@@ -17,6 +17,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@v4.4.0
+      - uses: Swatinem/rust-cache@v2.9.3
       - run: make lint
